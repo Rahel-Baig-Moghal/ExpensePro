@@ -1,5 +1,6 @@
 package com.rbm.exptracker
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
@@ -25,7 +26,13 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         val db = AppDatabase.getDatabase(applicationContext)
         val dao = db.expenseDao()
-        var canAccessApp by mutableStateOf(false)
+
+        // 1. Check Preference BEFORE Auth
+        val prefs = getSharedPreferences("budget_prefs", Context.MODE_PRIVATE)
+        val isBiometricEnabled = prefs.getBoolean("biometric_enabled", true)
+
+        // If disabled, grant access immediately. If enabled, deny until auth.
+        var canAccessApp by mutableStateOf(!isBiometricEnabled)
 
         val executor = ContextCompat.getMainExecutor(this)
         val biometricPrompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
@@ -41,7 +48,10 @@ class MainActivity : FragmentActivity() {
             .setNegativeButtonText("Cancel")
             .build()
 
-        biometricPrompt.authenticate(promptInfo)
+        // 2. Only authenticate if the user wants it
+        if (isBiometricEnabled) {
+            biometricPrompt.authenticate(promptInfo)
+        }
 
         setContent {
             EXPTrackerTheme {
@@ -54,6 +64,7 @@ class MainActivity : FragmentActivity() {
                     var selectedTab by remember { mutableIntStateOf(0) }
                     var showAddDialog by remember { mutableStateOf(false) }
                     var showRangePicker by remember { mutableStateOf(false) }
+                    var expenseToEdit by remember { mutableStateOf<com.rbm.exptracker.data.Expense?>(null) }
                     val rangePickerState = rememberDateRangePickerState()
 
                     if (showAddDialog) {
@@ -61,6 +72,18 @@ class MainActivity : FragmentActivity() {
                             viewModel.addExpense(amt, cat, note)
                             showAddDialog = false
                         })
+                    }
+
+                    if (expenseToEdit != null) {
+                        EditExpenseDialog(
+                            viewModel = viewModel,
+                            expense = expenseToEdit!!,
+                            onDismiss = { expenseToEdit = null },
+                            onConfirm = { updatedExpense ->
+                                viewModel.updateExpense(updatedExpense)
+                                expenseToEdit = null
+                            }
+                        )
                     }
 
                     if (showRangePicker) {
@@ -94,7 +117,14 @@ class MainActivity : FragmentActivity() {
                                 0 -> {
                                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                                         item { DashboardHeader(expenses.sumOf { it.amount }, viewModel.weeklyBudget, viewModel.monthlyBudget, currentFilter, searchQuery, { viewModel.updateSearch(it) }, { viewModel.updateFilter(it) }, { showRangePicker = true }) }
-                                        items(expenses, key = { it.id }) { expense -> ExpenseItem(viewModel, expense, { viewModel.deleteExpense(expense) }) }
+                                        items(expenses, key = { it.id }) { expense ->
+                                            ExpenseItem(
+                                                viewModel = viewModel,
+                                                expense = expense,
+                                                onDelete = { viewModel.deleteExpense(expense) },
+                                                onClick = { expenseToEdit = expense }
+                                            )
+                                        }
                                     }
                                 }
                                 1 -> AnalyticsDashboard(viewModel, expenses)

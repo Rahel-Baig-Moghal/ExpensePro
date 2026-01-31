@@ -26,6 +26,10 @@ class ExpenseViewModel(private val dao: ExpenseDao, context: Context) : ViewMode
     var weeklyBudget by mutableStateOf(prefs.getFloat("weekly_limit", 5000f).toDouble())
     var monthlyBudget by mutableStateOf(prefs.getFloat("monthly_limit", 25000f).toDouble())
 
+    // BIOMETRIC PREFERENCE
+    var isBiometricEnabled by mutableStateOf(prefs.getBoolean("biometric_enabled", true))
+
+    // CATEGORIES
     private val defaultCategories = setOf("Food", "Transport", "Rent", "Shopping", "Entertainment", "Ciggerate", "Travel")
     var categories by mutableStateOf(prefs.getStringSet("custom_categories", defaultCategories)?.toList()?.sorted() ?: defaultCategories.toList())
 
@@ -51,6 +55,12 @@ class ExpenseViewModel(private val dao: ExpenseDao, context: Context) : ViewMode
         activeCategoryFilter?.let { cat -> list = list.filter { it.category == cat } }
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // --- BIOMETRIC TOGGLE ---
+    fun toggleBiometric(enabled: Boolean) {
+        isBiometricEnabled = enabled
+        prefs.edit().putBoolean("biometric_enabled", enabled).apply()
+    }
 
     // --- ICON MAPPING ---
     fun getCategoryIconName(category: String): String {
@@ -103,6 +113,7 @@ class ExpenseViewModel(private val dao: ExpenseDao, context: Context) : ViewMode
         return ((currentMonthTotal - lastMonthTotal) / lastMonthTotal) * 100
     }
 
+    // --- UPDATES ---
     fun updateMonthlyBudget(v: Double) {
         monthlyBudget = v
         prefs.edit().putFloat("monthly_limit", v.toFloat()).apply()
@@ -122,6 +133,10 @@ class ExpenseViewModel(private val dao: ExpenseDao, context: Context) : ViewMode
 
     fun addExpense(amount: Double, category: String, note: String) {
         viewModelScope.launch { dao.insertExpense(Expense(amount = amount, category = category, note = note)) }
+    }
+
+    fun updateExpense(expense: Expense) {
+        viewModelScope.launch { dao.updateExpense(expense) }
     }
 
     fun deleteExpense(expense: Expense) { viewModelScope.launch { dao.deleteExpense(expense) } }
