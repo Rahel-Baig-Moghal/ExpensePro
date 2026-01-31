@@ -18,4 +18,7 @@ interface ExpenseDao {
 
     @Update
     suspend fun updateExpense(expense: Expense)
+
+    @Query("SELECT * FROM expenses")
+    fun getAllExpensesList(): List<Expense>
 }

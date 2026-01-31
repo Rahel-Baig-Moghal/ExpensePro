@@ -1,5 +1,7 @@
 package com.rbm.exptracker
 
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Context
 import androidx.compose.runtime.*
 import androidx.lifecycle.ViewModel
@@ -11,7 +13,8 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.util.*
 
-class ExpenseViewModel(private val dao: ExpenseDao, context: Context) : ViewModel() {
+// Note: We added 'context' to the constructor to talk to the Widget
+class ExpenseViewModel(private val dao: ExpenseDao, private val context: Context) : ViewModel() {
 
     private val prefs = context.getSharedPreferences("budget_prefs", Context.MODE_PRIVATE)
 
@@ -26,10 +29,8 @@ class ExpenseViewModel(private val dao: ExpenseDao, context: Context) : ViewMode
     var weeklyBudget by mutableStateOf(prefs.getFloat("weekly_limit", 5000f).toDouble())
     var monthlyBudget by mutableStateOf(prefs.getFloat("monthly_limit", 25000f).toDouble())
 
-    // BIOMETRIC PREFERENCE
     var isBiometricEnabled by mutableStateOf(prefs.getBoolean("biometric_enabled", true))
 
-    // CATEGORIES
     private val defaultCategories = setOf("Food", "Transport", "Rent", "Shopping", "Entertainment", "Ciggerate", "Travel")
     var categories by mutableStateOf(prefs.getStringSet("custom_categories", defaultCategories)?.toList()?.sorted() ?: defaultCategories.toList())
 
@@ -56,13 +57,21 @@ class ExpenseViewModel(private val dao: ExpenseDao, context: Context) : ViewMode
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // --- BIOMETRIC TOGGLE ---
+    // --- WIDGET UPDATE HELPER (NEW) ---
+    private fun triggerWidgetUpdate() {
+        val appWidgetManager = AppWidgetManager.getInstance(context)
+        val ids = appWidgetManager.getAppWidgetIds(ComponentName(context, ExpenseWidget::class.java))
+        // Force the widget to run its update logic immediately
+        for (id in ids) {
+            ExpenseWidget.updateAppWidget(context, appWidgetManager, id)
+        }
+    }
+
     fun toggleBiometric(enabled: Boolean) {
         isBiometricEnabled = enabled
         prefs.edit().putBoolean("biometric_enabled", enabled).apply()
     }
 
-    // --- ICON MAPPING ---
     fun getCategoryIconName(category: String): String {
         return prefs.getString("icon_$category", "Label") ?: "Label"
     }
@@ -89,7 +98,6 @@ class ExpenseViewModel(private val dao: ExpenseDao, context: Context) : ViewMode
             .apply()
     }
 
-    // --- ANALYTICS ---
     fun getDailyAverage(expenses: List<Expense>): Double {
         if (expenses.isEmpty()) return 0.0
         val days = expenses.groupBy { isSameDay(it.timestamp, it.timestamp) }.size.coerceAtLeast(1)
@@ -113,7 +121,6 @@ class ExpenseViewModel(private val dao: ExpenseDao, context: Context) : ViewMode
         return ((currentMonthTotal - lastMonthTotal) / lastMonthTotal) * 100
     }
 
-    // --- UPDATES ---
     fun updateMonthlyBudget(v: Double) {
         monthlyBudget = v
         prefs.edit().putFloat("monthly_limit", v.toFloat()).apply()
@@ -131,16 +138,36 @@ class ExpenseViewModel(private val dao: ExpenseDao, context: Context) : ViewMode
         _selectedFilter.value = "Range"
     }
 
+    // --- UPDATED DATA ACTIONS ---
+    // These now call triggerWidgetUpdate() after saving to DB
+
     fun addExpense(amount: Double, category: String, note: String) {
-        viewModelScope.launch { dao.insertExpense(Expense(amount = amount, category = category, note = note)) }
+        viewModelScope.launch {
+            dao.insertExpense(Expense(amount = amount, category = category, note = note))
+            triggerWidgetUpdate() // <--- UPDATE WIDGET
+        }
     }
 
     fun updateExpense(expense: Expense) {
-        viewModelScope.launch { dao.updateExpense(expense) }
+        viewModelScope.launch {
+            dao.updateExpense(expense)
+            triggerWidgetUpdate() // <--- UPDATE WIDGET
+        }
     }
 
-    fun deleteExpense(expense: Expense) { viewModelScope.launch { dao.deleteExpense(expense) } }
-    fun clearAllExpenses() { viewModelScope.launch { dao.deleteAllExpenses() } }
+    fun deleteExpense(expense: Expense) {
+        viewModelScope.launch {
+            dao.deleteExpense(expense)
+            triggerWidgetUpdate() // <--- UPDATE WIDGET
+        }
+    }
+
+    fun clearAllExpenses() {
+        viewModelScope.launch {
+            dao.deleteAllExpenses()
+            triggerWidgetUpdate() // <--- UPDATE WIDGET
+        }
+    }
 
     fun exportToCSV(context: Context): File {
         val file = File(context.cacheDir, "expenses_report.csv")

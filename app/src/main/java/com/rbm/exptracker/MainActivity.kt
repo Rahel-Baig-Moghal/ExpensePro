@@ -27,11 +27,9 @@ class MainActivity : FragmentActivity() {
         val db = AppDatabase.getDatabase(applicationContext)
         val dao = db.expenseDao()
 
-        // 1. Check Preference BEFORE Auth
         val prefs = getSharedPreferences("budget_prefs", Context.MODE_PRIVATE)
         val isBiometricEnabled = prefs.getBoolean("biometric_enabled", true)
 
-        // If disabled, grant access immediately. If enabled, deny until auth.
         var canAccessApp by mutableStateOf(!isBiometricEnabled)
 
         val executor = ContextCompat.getMainExecutor(this)
@@ -48,7 +46,6 @@ class MainActivity : FragmentActivity() {
             .setNegativeButtonText("Cancel")
             .build()
 
-        // 2. Only authenticate if the user wants it
         if (isBiometricEnabled) {
             biometricPrompt.authenticate(promptInfo)
         }
@@ -62,7 +59,13 @@ class MainActivity : FragmentActivity() {
                     val searchQuery by viewModel.searchQuery.collectAsState()
 
                     var selectedTab by remember { mutableIntStateOf(0) }
-                    var showAddDialog by remember { mutableStateOf(false) }
+
+                    // --- WIDGET LOGIC ---
+                    val launchedFromWidget = intent.getBooleanExtra("OPEN_ADD_DIALOG", false)
+                    var showAddDialog by remember { mutableStateOf(launchedFromWidget) }
+                    if (launchedFromWidget) intent.removeExtra("OPEN_ADD_DIALOG")
+                    // --------------------
+
                     var showRangePicker by remember { mutableStateOf(false) }
                     var expenseToEdit by remember { mutableStateOf<com.rbm.exptracker.data.Expense?>(null) }
                     val rangePickerState = rememberDateRangePickerState()
@@ -86,19 +89,20 @@ class MainActivity : FragmentActivity() {
                         )
                     }
 
+                    // --- NEW DATE PICKER CALL ---
                     if (showRangePicker) {
-                        DatePickerDialog(
-                            onDismissRequest = { showRangePicker = false },
-                            confirmButton = {
-                                TextButton(onClick = {
-                                    rangePickerState.selectedStartDateMillis?.let { s ->
-                                        rangePickerState.selectedEndDateMillis?.let { e -> viewModel.setRange(s, e) }
-                                    }
-                                    showRangePicker = false
-                                }) { Text("Apply") }
+                        PremiumDateRangePicker(
+                            state = rangePickerState,
+                            onDismiss = { showRangePicker = false },
+                            onConfirm = {
+                                rangePickerState.selectedStartDateMillis?.let { start ->
+                                    rangePickerState.selectedEndDateMillis?.let { end -> viewModel.setRange(start, end) }
+                                }
+                                showRangePicker = false
                             }
-                        ) { DateRangePicker(state = rangePickerState, modifier = Modifier.weight(1f)) }
+                        )
                     }
+                    // ----------------------------
 
                     Scaffold(
                         bottomBar = {

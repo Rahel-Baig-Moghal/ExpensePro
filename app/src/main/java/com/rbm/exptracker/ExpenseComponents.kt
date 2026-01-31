@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rbm.exptracker.data.Expense
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
 import java.util.*
 
 // --- DASHBOARD COMPONENTS ---
@@ -226,7 +227,6 @@ fun DashboardHeader(total: Double, weeklyBudget: Double, monthlyBudget: Double, 
     }
 }
 
-// --- FIXED EXPENSE ITEM WITH DELETE BUTTON ---
 @Composable
 fun ExpenseItem(viewModel: ExpenseViewModel, expense: Expense, onDelete: () -> Unit, onClick: () -> Unit) {
     Card(
@@ -239,7 +239,6 @@ fun ExpenseItem(viewModel: ExpenseViewModel, expense: Expense, onDelete: () -> U
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            // Squircle Icon
             Box(
                 modifier = Modifier
                     .size(48.dp)
@@ -254,20 +253,13 @@ fun ExpenseItem(viewModel: ExpenseViewModel, expense: Expense, onDelete: () -> U
                     modifier = Modifier.size(24.dp)
                 )
             }
-
             Spacer(Modifier.width(16.dp))
-
             Column(Modifier.weight(1f)) {
                 Text(expense.category, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(expense.getFormattedDate(), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
             }
-
-            // Amount
             Text(formatCurrency(expense.amount), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-
             Spacer(Modifier.width(8.dp))
-
-            // RESTORED DELETE BUTTON
             IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Default.Delete,
@@ -436,6 +428,8 @@ fun SettingsSectionCard(title: String, content: @Composable () -> Unit) {
     }
 }
 
+// --- DIALOGS & HELPERS ---
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddExpenseDialog(viewModel: ExpenseViewModel, categories: List<String>, onDismiss: () -> Unit, onConfirm: (Double, String, String) -> Unit) {
@@ -504,6 +498,92 @@ fun EditExpenseDialog(viewModel: ExpenseViewModel, expense: Expense, onDismiss: 
         confirmButton = { Button(onClick = { val amt = amount.toDoubleOrNull() ?: 0.0; if (amt > 0) onConfirm(expense.copy(amount = amt, category = selectedCategory, note = note)) }) { Text("Update") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PremiumDateRangePicker(
+    state: DateRangePickerState,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    // Helper to format the selected range for display
+    val rangeText = remember(state.selectedStartDateMillis, state.selectedEndDateMillis) {
+        val start = state.selectedStartDateMillis
+        val end = state.selectedEndDateMillis
+        if (start != null && end != null) {
+            val sDate = SimpleDateFormat("MMM dd", Locale.getDefault()).format(Date(start))
+            val eDate = SimpleDateFormat("MMM dd", Locale.getDefault()).format(Date(end))
+            "$sDate - $eDate"
+        } else {
+            "Select Range"
+        }
+    }
+
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        colors = DatePickerDefaults.colors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Apply Range")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = MaterialTheme.colorScheme.error)
+            }
+        }
+    ) {
+        // --- CUSTOM HEADER START ---
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
+                .padding(vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Filter by Date",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = rangeText,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        // --- CUSTOM HEADER END ---
+        Divider()
+        DateRangePicker(
+            state = state,
+            title = null, // Hide default title
+            headline = null, // Hide default headline
+            showModeToggle = false,
+            colors = DatePickerDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surface,
+                weekdayContentColor = MaterialTheme.colorScheme.primary,
+                selectedDayContainerColor = MaterialTheme.colorScheme.primary,
+                selectedDayContentColor = MaterialTheme.colorScheme.onPrimary,
+                dayInSelectionRangeContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                dayInSelectionRangeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                todayContentColor = MaterialTheme.colorScheme.primary,
+                todayDateBorderColor = MaterialTheme.colorScheme.primary
+            ),
+            modifier = Modifier.weight(1f)
+        )
+    }
 }
 
 fun getIconFromName(name: String): ImageVector = when (name) {
